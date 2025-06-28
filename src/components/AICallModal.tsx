@@ -486,9 +486,7 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
                 )}
               </button>
 
-              <button className="p-4 bg-white/10 hover:bg-white/20 rounded-full transition-all duration-300">
-                <Video className="w-6 h-6" />
-              </button>
+
 
               <button 
                 onClick={handleEndCall}
