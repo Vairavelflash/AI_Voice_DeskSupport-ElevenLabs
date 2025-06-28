@@ -5,7 +5,7 @@ import { useConversation } from '@elevenlabs/react';
 
 
 
-export function CallScreen() {
+export function CallScreen({ isOpen, onClose }) {
   const [callDuration, setCallDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [currentMessage, setCurrentMessage] = useState('');
