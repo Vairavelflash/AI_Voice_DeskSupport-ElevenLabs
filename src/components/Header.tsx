@@ -28,6 +28,15 @@ const Header: React.FC<HeaderProps> = ({ onOpenAICall }) => {
         <div className="absolute top-1/2 left-1/2 w-72 h-72 bg-teal-400 rounded-full blur-3xl opacity-25 animate-pulse delay-500"></div>
       </div>
 
+      {/* Medical Background Image */}
+      <div className="absolute inset-0 opacity-10">
+        <img 
+          src="https://images.pexels.com/photos/4386467/pexels-photo-4386467.jpeg?auto=compress&cs=tinysrgb&w=1920&h=1080&fit=crop" 
+          alt="Medical Technology Background"
+          className="w-full h-full object-cover"
+        />
+      </div>
+
       {/* Navigation */}
       <nav className="absolute top-0 left-0 right-0 z-50 px-6 py-6">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -87,6 +96,15 @@ const Header: React.FC<HeaderProps> = ({ onOpenAICall }) => {
         <div className="w-6 h-10 border-2 border-white/50 rounded-full flex justify-center">
           <div className="w-1 h-3 bg-white/70 rounded-full mt-2 animate-pulse"></div>
         </div>
+      </div>
+
+      {/* White Circle Image - Bottom Right */}
+      <div className="absolute bottom-8 right-8 z-20">
+        <img 
+          src="/white_circle_360x360.png" 
+          alt="Sam Labs Logo"
+          className="w-16 h-16 opacity-80 hover:opacity-100 transition-opacity duration-300"
+        />
       </div>
     </header>
   );

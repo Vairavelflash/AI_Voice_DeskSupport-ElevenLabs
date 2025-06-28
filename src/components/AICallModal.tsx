@@ -162,13 +162,7 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
       
       // Create WebSocket connection to ElevenLabs Conversational AI
       const websocket = new WebSocket(
-        `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=agent_01jy614wfzeyysvckvwxz01pw4`,
-        [],
-        {
-          headers: {
-            'xi-api-key': 'sk_f030d609bd8ffe5b7fb6d4d35950395433ff69acca64d526'
-          }
-        }
+        `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=agent_01jy614wfzeyysvckvwxz01pw4`
       );
 
       websocketRef.current = websocket;
@@ -359,6 +353,15 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
         <div className="absolute inset-0 opacity-20">
           <div className="absolute top-20 left-20 w-64 h-64 bg-blue-400 rounded-full blur-3xl animate-pulse"></div>
           <div className="absolute bottom-20 right-20 w-96 h-96 bg-purple-400 rounded-full blur-3xl animate-pulse delay-1000"></div>
+        </div>
+
+        {/* White Circle Image - Bottom Right */}
+        <div className="absolute bottom-8 right-8 z-20">
+          <img 
+            src="/white_circle_360x360.png" 
+            alt="Sam Labs Logo"
+            className="w-20 h-20 opacity-60 hover:opacity-80 transition-opacity duration-300"
+          />
         </div>
 
         {currentScreen === 'audioCheck' && (

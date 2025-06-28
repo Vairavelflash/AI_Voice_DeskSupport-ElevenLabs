@@ -14,8 +14,17 @@ const AboutSection: React.FC<AboutSectionProps> = ({ company }) => {
   ];
 
   return (
-    <section className="py-20 bg-gray-50">
-      <div className="max-w-7xl mx-auto px-6">
+    <section className="py-20 bg-gray-50 relative overflow-hidden">
+      {/* Background Medical Image */}
+      <div className="absolute inset-0 opacity-5">
+        <img 
+          src="https://images.pexels.com/photos/4386467/pexels-photo-4386467.jpeg?auto=compress&cs=tinysrgb&w=1920&h=1080&fit=crop" 
+          alt="Medical Background"
+          className="w-full h-full object-cover"
+        />
+      </div>
+
+      <div className="max-w-7xl mx-auto px-6 relative z-10">
         {/* Company Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
           {stats.map((stat, index) => (
@@ -67,15 +76,24 @@ const AboutSection: React.FC<AboutSectionProps> = ({ company }) => {
           </div>
 
           <div className="relative">
-            <div className="aspect-square bg-gradient-to-br from-blue-100 to-teal-100 rounded-2xl p-8 flex items-center justify-center">
-              <div className="text-center">
-                <div className="w-32 h-32 bg-gradient-to-br from-blue-500 to-teal-500 rounded-full flex items-center justify-center mb-6 mx-auto">
-                  <Stethoscope className="w-16 h-16 text-white" />
+            {/* Medical Equipment Image */}
+            <div className="aspect-square bg-gradient-to-br from-blue-100 to-teal-100 rounded-2xl p-8 flex items-center justify-center relative overflow-hidden">
+              <img 
+                src="https://images.pexels.com/photos/4386467/pexels-photo-4386467.jpeg?auto=compress&cs=tinysrgb&w=800&h=800&fit=crop" 
+                alt="Medical Technology"
+                className="w-full h-full object-cover rounded-xl opacity-80"
+              />
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-500/20 to-teal-500/20 rounded-xl"></div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-center bg-white/90 backdrop-blur-sm rounded-2xl p-6">
+                  <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-teal-500 rounded-full flex items-center justify-center mb-4 mx-auto">
+                    <Stethoscope className="w-8 h-8 text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Healthcare Excellence</h3>
+                  <p className="text-gray-700 text-sm">
+                    Leading diagnostic accuracy since 2005
+                  </p>
                 </div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-4">Healthcare Excellence</h3>
-                <p className="text-gray-700">
-                  Leading the way in diagnostic accuracy and patient care since 2005
-                </p>
               </div>
             </div>
             
