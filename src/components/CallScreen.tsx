@@ -39,7 +39,10 @@ export function CallScreen({ isOpen, onClose }) {
   });
 
   useEffect(() => {
+    if(isOpen){
+      
     // initializeCall();
+    }
     
     return () => {
       cleanup();
@@ -55,8 +58,8 @@ export function CallScreen({ isOpen, onClose }) {
       
       // Start ElevenLabs conversation
       await conversation.startSession({
-        agentId: agentId,
-        // agentId:"agent_01jy614wfzeyysvckvwxz01pw4"
+        // agentId: agentId,
+        agentId:"agent_01jy614wfzeyysvckvwxz01pw4"
       });
       
       // Start call timer
@@ -134,8 +137,9 @@ export function CallScreen({ isOpen, onClose }) {
       //     highlights: ["Good listening skills", "Asked thoughtful questions", "Maintained positive energy"]
       //   }
       // };
-      
       cleanup();
+      onClose();
+      
       // onEndCall(callData);
     } catch (error) {
       console.error('Error ending call:', error);
