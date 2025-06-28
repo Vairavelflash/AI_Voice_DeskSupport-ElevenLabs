@@ -81,26 +81,40 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
   const cleanup = () => {
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
     }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
     }
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
       audioContextRef.current.close();
+      audioContextRef.current = null;
     }
     if (websocketRef.current) {
       websocketRef.current.close();
+      websocketRef.current = null;
     }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
+      mediaRecorderRef.current = null;
+    }
+    if (analyserRef.current) {
+      analyserRef.current = null;
+    }
+    if (microphoneRef.current) {
+      microphoneRef.current = null;
     }
   };
 
   const startAudioTest = async () => {
+    console.log('Starting audio test...');
     setIsAudioTesting(true);
     setAudioError(null);
+    setAudioLevel(0);
 
     try {
+      // Request microphone access
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           echoCancellation: true,
@@ -110,45 +124,97 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
         } 
       });
       
+      console.log('Microphone access granted');
       streamRef.current = stream;
       
+      // Create audio context
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      await audioContext.resume(); // Ensure context is running
       audioContextRef.current = audioContext;
       
+      // Create analyser
       const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 256;
-      analyser.smoothingTimeConstant = 0.8;
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0.3;
       analyserRef.current = analyser;
       
+      // Connect microphone to analyser
       const microphone = audioContext.createMediaStreamSource(stream);
       microphoneRef.current = microphone;
       microphone.connect(analyser);
       
+      console.log('Audio context and analyser set up');
+      
+      // Start monitoring audio levels
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
       
       const updateAudioLevel = () => {
-        if (analyser && isAudioTesting) {
-          analyser.getByteFrequencyData(dataArray);
-          const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-          setAudioLevel(Math.min(average / 128 * 100, 100));
+        if (!analyserRef.current || !isAudioTesting) {
+          return;
+        }
+        
+        analyserRef.current.getByteFrequencyData(dataArray);
+        
+        // Calculate RMS (Root Mean Square) for more accurate volume detection
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i] * dataArray[i];
+        }
+        const rms = Math.sqrt(sum / dataArray.length);
+        
+        // Convert to percentage and apply some scaling for better visualization
+        const level = Math.min((rms / 128) * 100 * 2, 100);
+        setAudioLevel(level);
+        
+        if (isAudioTesting) {
           animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
         }
       };
       
       updateAudioLevel();
+      console.log('Audio level monitoring started');
       
     } catch (error) {
       console.error('Audio access error:', error);
-      setAudioError('Unable to access microphone. Please check your permissions and try again.');
+      let errorMessage = 'Unable to access microphone. ';
+      
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError') {
+          errorMessage += 'Please allow microphone access and try again.';
+        } else if (error.name === 'NotFoundError') {
+          errorMessage += 'No microphone found. Please connect a microphone and try again.';
+        } else {
+          errorMessage += 'Please check your microphone settings and try again.';
+        }
+      }
+      
+      setAudioError(errorMessage);
+      setIsAudioTesting(false);
+    }
+  };
+
+  const stopAudioTest = () => {
+    console.log('Stopping audio test...');
+    setIsAudioTesting(false);
+    
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+    }
+    
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.close();
     }
   };
 
   const handleAudioCheckComplete = async () => {
+    console.log('Audio check completed, proceeding to call...');
     setCallState(prev => ({ ...prev, isAudioChecked: true }));
-    setIsAudioTesting(false);
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-    }
+    stopAudioTest();
     
     // Proceed to calling screen
     setCurrentScreen('calling');
@@ -391,35 +457,55 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
                 ) : (
                   <div className="space-y-4">
                     {audioError ? (
-                      <div className="flex items-center justify-center space-x-2 text-red-400">
-                        <AlertCircle className="w-5 h-5" />
-                        <span className="text-sm">{audioError}</span>
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-center space-x-2 text-red-400">
+                          <AlertCircle className="w-5 h-5" />
+                          <span className="text-sm">{audioError}</span>
+                        </div>
+                        <button 
+                          onClick={startAudioTest}
+                          className="flex items-center space-x-2 mx-auto px-6 py-3 bg-blue-500 hover:bg-blue-600 rounded-full transition-all duration-300"
+                        >
+                          <Mic className="w-5 h-5" />
+                          <span>Try Again</span>
+                        </button>
                       </div>
                     ) : (
                       <>
                         <div className="text-sm text-gray-400 mb-2">Speak into your microphone</div>
-                        <div className="w-full bg-gray-700 rounded-full h-4 mb-4 overflow-hidden">
+                        <div className="w-full bg-gray-700 rounded-full h-6 mb-4 overflow-hidden">
                           <div 
-                            className={`h-4 rounded-full transition-all duration-150 ${
-                              audioLevel > 50 ? 'bg-gradient-to-r from-green-400 to-blue-500' :
-                              audioLevel > 20 ? 'bg-gradient-to-r from-yellow-400 to-green-500' :
-                              'bg-gradient-to-r from-red-400 to-yellow-500'
+                            className={`h-6 rounded-full transition-all duration-150 ${
+                              audioLevel > 30 ? 'bg-gradient-to-r from-green-400 to-blue-500' :
+                              audioLevel > 10 ? 'bg-gradient-to-r from-yellow-400 to-green-500' :
+                              audioLevel > 0 ? 'bg-gradient-to-r from-orange-400 to-yellow-500' :
+                              'bg-gradient-to-r from-red-400 to-orange-500'
                             }`}
                             style={{ width: `${Math.min(audioLevel, 100)}%` }}
                           ></div>
                         </div>
-                        <div className="text-xs text-gray-500 mb-4">
+                        <div className="text-sm text-gray-400 mb-4">
                           Audio Level: {Math.round(audioLevel)}%
-                          {audioLevel > 10 && <span className="text-green-400 ml-2">✓ Good</span>}
+                          {audioLevel > 15 && <span className="text-green-400 ml-2">✓ Good signal detected</span>}
+                          {audioLevel > 0 && audioLevel <= 15 && <span className="text-yellow-400 ml-2">⚠ Speak louder</span>}
+                          {audioLevel === 0 && <span className="text-red-400 ml-2">✗ No audio detected</span>}
                         </div>
-                        <button 
-                          onClick={handleAudioCheckComplete}
-                          disabled={audioLevel < 5}
-                          className="flex items-center space-x-2 mx-auto px-6 py-3 bg-green-500 hover:bg-green-600 rounded-full transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <CheckCircle className="w-5 h-5" />
-                          <span>Join Call</span>
-                        </button>
+                        <div className="flex space-x-3 justify-center">
+                          <button 
+                            onClick={stopAudioTest}
+                            className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-full transition-all duration-300"
+                          >
+                            Stop Test
+                          </button>
+                          <button 
+                            onClick={handleAudioCheckComplete}
+                            disabled={audioLevel < 10}
+                            className="flex items-center space-x-2 px-6 py-3 bg-green-500 hover:bg-green-600 rounded-full transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-600"
+                          >
+                            <CheckCircle className="w-5 h-5" />
+                            <span>Join Call</span>
+                          </button>
+                        </div>
                       </>
                     )}
                   </div>
