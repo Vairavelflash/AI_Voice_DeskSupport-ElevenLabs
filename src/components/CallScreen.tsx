@@ -189,7 +189,7 @@ export function CallScreen({ isOpen, onClose }) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 console.log('first',conversation)
-  if(isOpen) return;
+  if(!isOpen) return;
   return (
        <div className="fixed inset-0 z-50 bg-black bg-opacity-90 flex items-center justify-center">
       <div className="w-full h-full bg-gradient-to-br from-gray-900 to-black text-white relative overflow-hidden">
