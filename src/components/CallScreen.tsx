@@ -46,7 +46,7 @@ export function CallScreen({ isOpen, onClose }) {
     return () => {
       cleanup();
     };
-  }, []);
+  }, [isOpen]);
 
   const initializeCall = async () => {
     try {
