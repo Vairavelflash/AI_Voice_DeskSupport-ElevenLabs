@@ -192,40 +192,32 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
   }, [conversation, micPermission]);
 
   const handleEndCall = useCallback(async () => {
-    console.log('End call')
+    console.log('End call initiated');
+    
     try {
+      // End the conversation session
       await conversation.endSession();
-
-      // Wait for session summary to become available
-      let retries = 0;
-      const maxRetries = 20;
-      const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
-
-      while (!conversation.session && retries < maxRetries) {
-        await delay(500); // wait 500ms
-        retries++;
-      }
-
-      const session = conversation.session;
-      if (session) {
-        const { overview, transcript, evaluation } = session;
-        setSessionSummary({ overview, transcript, evaluation });
-      } else {
-        console.warn('Session data not available after waiting.');
-        // Create fallback summary from conversation messages
-        const fallbackSummary = createFallbackSummary();
-        setSessionSummary(fallbackSummary);
-      }
+      
+      // Stop all audio streams immediately
+      cleanup();
+      
+      // Reset call state
+      setCallState(prev => ({ ...prev, isJoined: false }));
+      
+      console.log('Call ended successfully, returning to home');
+      
+      // Close modal and return to home screen
+      resetAllState();
+      onClose();
+      
     } catch (error) {
       console.error('Error ending call:', error);
-      // Create fallback summary
-      const fallbackSummary = createFallbackSummary();
-      setSessionSummary(fallbackSummary);
+      // Even if there's an error, still close the modal and return home
+      cleanup();
+      resetAllState();
+      onClose();
     }
-
-    cleanup();
-    setCurrentScreen('callEnd');
-  }, [conversation, conversationMessages, callStartTime]);
+  }, [conversation, onClose]);
 
   const createFallbackSummary = (): SessionSummary => {
     const endTime = new Date();
@@ -288,7 +280,10 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
   };
 
   if (!isOpen) return null;
-console.log('001',conversation,conversationMessages)
+
+  console.log('Conversation status:', conversation.status);
+  console.log('Messages:', conversationMessages);
+
   return (
     <div className="fixed inset-0 z-50 bg-black bg-opacity-90 flex items-center justify-center">
       <div className="w-full h-full bg-gradient-to-br from-gray-900 to-black text-white relative overflow-hidden">
@@ -486,8 +481,6 @@ console.log('001',conversation,conversationMessages)
                   <Mic className="w-6 h-6" />
                 )}
               </button>
-
-
 
               <button 
                 onClick={handleEndCall}
