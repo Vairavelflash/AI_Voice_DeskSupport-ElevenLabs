@@ -190,6 +190,15 @@ export function CallScreen({ isOpen, onClose }) {
   };
 console.log('first',conversation)
   return (
+       <div className="fixed inset-0 z-50 bg-black bg-opacity-90 flex items-center justify-center">
+      <div className="w-full h-full bg-gradient-to-br from-gray-900 to-black text-white relative overflow-hidden">
+        {/* Close Button */}
+        <button 
+          onClick={onClose}
+          className="absolute top-6 right-6 z-10 p-3 bg-white/10 backdrop-blur-lg rounded-full hover:bg-white/20 transition-all duration-300"
+        >
+          <X className="w-6 h-6" />
+        </button>
     <div className="min-h-screen bg-gradient-to-br from-pink-900 via-violet-900 to-rose-900 relative overflow-hidden">
       {/* Background Image with Overlay */}
       <div 
@@ -304,5 +313,8 @@ console.log('first',conversation)
         
       </div>
     </div>
+      </div>
+       </div>
+    
   );
 }
