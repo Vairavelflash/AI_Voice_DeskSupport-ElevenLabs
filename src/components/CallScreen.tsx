@@ -156,7 +156,7 @@ export function CallScreen({
       cleanup();
       onEndCall(callData);
     }
-  }, [conversation, settings.apiKey, onEndCall]);
+  }, [conversation, onEndCall]);
 
   const cleanup = () => {
     if (callTimerRef.current) {
