@@ -34,11 +34,12 @@ function App() {
       <ServicesSection />
       <Footer />
 
-      <AICallModal 
+      {/* <AICallModal 
         isOpen={isAICallOpen} 
         onClose={handleCloseAICall} 
-      />
-      {/* <CallScreen/> */}
+      /> */}
+      <CallScreen   isOpen={isAICallOpen} 
+        onClose={handleCloseAICall} />
     </div>
   );
 }
