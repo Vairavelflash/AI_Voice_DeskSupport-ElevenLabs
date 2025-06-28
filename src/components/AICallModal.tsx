@@ -36,6 +36,7 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
   const [agentMessages, setAgentMessages] = useState<string[]>([]);
   const [currentUserText, setCurrentUserText] = useState('');
   const [currentAgentText, setCurrentAgentText] = useState('');
+  const [micPermission, setMicPermission] = useState<'granted' | 'denied' | 'pending'>('pending');
   
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -49,11 +50,55 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
     if (isOpen) {
       setCallState(prev => ({ ...prev, isOpen: true }));
       setCurrentScreen('audioCheck');
+      checkMicrophonePermission();
     } else {
       // Reset all state when modal closes
       resetAllState();
     }
   }, [isOpen]);
+
+  const onShowToast = (title: string, message: string, type: 'success' | 'error') => {
+    console.log(`${type.toUpperCase()}: ${title} - ${message}`);
+  };
+
+  const checkMicrophonePermission = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setMicPermission('granted');
+      onShowToast('Microphone Ready', 'Your microphone is working perfectly!', 'success');
+      
+      // Create audio context for level detection
+      const audioContext = new AudioContext();
+      const analyser = audioContext.createAnalyser();
+      const microphone = audioContext.createMediaStreamSource(stream);
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      
+      microphone.connect(analyser);
+      analyser.fftSize = 256;
+      
+      audioContextRef.current = audioContext;
+      analyserRef.current = analyser;
+      microphoneRef.current = microphone;
+      streamRef.current = stream;
+      
+      const updateAudioLevel = () => {
+        if (analyserRef.current && isOpen) {
+          analyser.getByteFrequencyData(dataArray);
+          const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+          setAudioLevel(average);
+          animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
+        }
+      };
+      
+      updateAudioLevel();
+      setIsAudioTesting(true);
+      
+    } catch (error) {
+      setMicPermission('denied');
+      onShowToast('Microphone Access Denied', 'Please allow microphone access to continue', 'error');
+      setAudioError('Microphone access denied. You can still join the call but audio features may be limited.');
+    }
+  };
 
   const resetAllState = () => {
     setCallState({
@@ -75,6 +120,7 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
     setAgentMessages([]);
     setCurrentUserText('');
     setCurrentAgentText('');
+    setMicPermission('pending');
     cleanup();
   };
 
@@ -107,114 +153,15 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const startAudioTest = async () => {
-    console.log('Starting audio test...');
-    setIsAudioTesting(true);
-    setAudioError(null);
-    setAudioLevel(0);
-
-    try {
-      // Request microphone access
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: 44100
-        } 
-      });
-      
-      console.log('Microphone access granted');
-      streamRef.current = stream;
-      
-      // Create audio context
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      await audioContext.resume(); // Ensure context is running
-      audioContextRef.current = audioContext;
-      
-      // Create analyser
-      const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 2048;
-      analyser.smoothingTimeConstant = 0.3;
-      analyserRef.current = analyser;
-      
-      // Connect microphone to analyser
-      const microphone = audioContext.createMediaStreamSource(stream);
-      microphoneRef.current = microphone;
-      microphone.connect(analyser);
-      
-      console.log('Audio context and analyser set up');
-      
-      // Start monitoring audio levels
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
-      
-      const updateAudioLevel = () => {
-        if (!analyserRef.current || !isAudioTesting) {
-          return;
-        }
-        
-        analyserRef.current.getByteFrequencyData(dataArray);
-        
-        // Calculate RMS (Root Mean Square) for more accurate volume detection
-        let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-          sum += dataArray[i] * dataArray[i];
-        }
-        const rms = Math.sqrt(sum / dataArray.length);
-        
-        // Convert to percentage and apply some scaling for better visualization
-        const level = Math.min((rms / 128) * 100 * 2, 100);
-        setAudioLevel(level);
-        
-        if (isAudioTesting) {
-          animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
-        }
-      };
-      
-      updateAudioLevel();
-      console.log('Audio level monitoring started');
-      
-    } catch (error) {
-      console.error('Audio access error:', error);
-      let errorMessage = 'Unable to access microphone. ';
-      
-      if (error instanceof Error) {
-        if (error.name === 'NotAllowedError') {
-          errorMessage += 'Please allow microphone access and try again.';
-        } else if (error.name === 'NotFoundError') {
-          errorMessage += 'No microphone found. Please connect a microphone and try again.';
-        } else {
-          errorMessage += 'Please check your microphone settings and try again.';
-        }
-      }
-      
-      setAudioError(errorMessage);
-      setIsAudioTesting(false);
-    }
-  };
-
-  const stopAudioTest = () => {
-    console.log('Stopping audio test...');
+  const handleAudioCheckComplete = async () => {
+    console.log('Audio check completed, proceeding to call...');
+    setCallState(prev => ({ ...prev, isAudioChecked: true }));
     setIsAudioTesting(false);
     
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
     }
-    
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-    }
-    
-    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-      audioContextRef.current.close();
-    }
-  };
-
-  const handleAudioCheckComplete = async () => {
-    console.log('Audio check completed, proceeding to call...');
-    setCallState(prev => ({ ...prev, isAudioChecked: true }));
-    stopAudioTest();
     
     // Proceed to calling screen
     setCurrentScreen('calling');
@@ -228,7 +175,13 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
       
       // Create WebSocket connection to ElevenLabs Conversational AI
       const websocket = new WebSocket(
-        `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=agent_01jy614wfzeyysvckvwxz01pw4`
+        `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=agent_01jy614wfzeyysvckvwxz01pw4`,
+        [],
+        {
+          headers: {
+            'xi-api-key': 'sk_f030d609bd8ffe5b7fb6d4d35950395433ff69acca64d526'
+          }
+        }
       );
 
       websocketRef.current = websocket;
@@ -256,7 +209,7 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
         setTimeout(() => setIsAgentSpeaking(false), 4000);
 
         // Start recording audio if stream is available
-        if (streamRef.current) {
+        if (streamRef.current && micPermission === 'granted') {
           startAudioRecording();
         }
       };
@@ -440,76 +393,66 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
               
               <h2 className="text-3xl font-bold mb-4">Audio Check</h2>
               <p className="text-gray-300 mb-8">
-                Please test your microphone to ensure clear communication with our AI assistant.
+                Testing your microphone to ensure clear communication with our AI assistant.
               </p>
 
               <div className="p-6 bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 mb-8">
-                <h3 className="text-lg font-semibold mb-4">Microphone Test</h3>
+                <h3 className="text-lg font-semibold mb-4">Microphone Status</h3>
                 
-                {!isAudioTesting ? (
-                  <button 
-                    onClick={startAudioTest}
-                    className="flex items-center space-x-2 mx-auto px-6 py-3 bg-blue-500 hover:bg-blue-600 rounded-full transition-all duration-300"
-                  >
-                    <Mic className="w-5 h-5" />
-                    <span>Start Audio Test</span>
-                  </button>
-                ) : (
-                  <div className="space-y-4">
-                    {audioError ? (
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-center space-x-2 text-red-400">
-                          <AlertCircle className="w-5 h-5" />
-                          <span className="text-sm">{audioError}</span>
-                        </div>
-                        <button 
-                          onClick={startAudioTest}
-                          className="flex items-center space-x-2 mx-auto px-6 py-3 bg-blue-500 hover:bg-blue-600 rounded-full transition-all duration-300"
-                        >
-                          <Mic className="w-5 h-5" />
-                          <span>Try Again</span>
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="text-sm text-gray-400 mb-2">Speak into your microphone</div>
-                        <div className="w-full bg-gray-700 rounded-full h-6 mb-4 overflow-hidden">
-                          <div 
-                            className={`h-6 rounded-full transition-all duration-150 ${
-                              audioLevel > 30 ? 'bg-gradient-to-r from-green-400 to-blue-500' :
-                              audioLevel > 10 ? 'bg-gradient-to-r from-yellow-400 to-green-500' :
-                              audioLevel > 0 ? 'bg-gradient-to-r from-orange-400 to-yellow-500' :
-                              'bg-gradient-to-r from-red-400 to-orange-500'
-                            }`}
-                            style={{ width: `${Math.min(audioLevel, 100)}%` }}
-                          ></div>
-                        </div>
-                        <div className="text-sm text-gray-400 mb-4">
-                          Audio Level: {Math.round(audioLevel)}%
-                          {audioLevel > 15 && <span className="text-green-400 ml-2">✓ Good signal detected</span>}
-                          {audioLevel > 0 && audioLevel <= 15 && <span className="text-yellow-400 ml-2">⚠ Speak louder</span>}
-                          {audioLevel === 0 && <span className="text-red-400 ml-2">✗ No audio detected</span>}
-                        </div>
-                        <div className="flex space-x-3 justify-center">
-                          <button 
-                            onClick={stopAudioTest}
-                            className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-full transition-all duration-300"
-                          >
-                            Stop Test
-                          </button>
-                          <button 
-                            onClick={handleAudioCheckComplete}
-                            disabled={audioLevel < 10}
-                            className="flex items-center space-x-2 px-6 py-3 bg-green-500 hover:bg-green-600 rounded-full transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-600"
-                          >
-                            <CheckCircle className="w-5 h-5" />
-                            <span>Join Call</span>
-                          </button>
-                        </div>
-                      </>
-                    )}
+                {micPermission === 'pending' && (
+                  <div className="flex items-center justify-center space-x-2 text-yellow-400">
+                    <div className="w-4 h-4 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
+                    <span>Checking microphone access...</span>
                   </div>
                 )}
+
+                {micPermission === 'denied' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-center space-x-2 text-red-400">
+                      <AlertCircle className="w-5 h-5" />
+                      <span className="text-sm">Microphone access denied</span>
+                    </div>
+                    <p className="text-gray-400 text-sm">
+                      You can still join the call, but audio features will be limited.
+                    </p>
+                  </div>
+                )}
+
+                {micPermission === 'granted' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-center space-x-2 text-green-400 mb-4">
+                      <CheckCircle className="w-5 h-5" />
+                      <span>Microphone Ready</span>
+                    </div>
+                    
+                    <div className="text-sm text-gray-400 mb-2">Audio Level Monitor</div>
+                    <div className="w-full bg-gray-700 rounded-full h-6 mb-4 overflow-hidden">
+                      <div 
+                        className={`h-6 rounded-full transition-all duration-150 ${
+                          audioLevel > 50 ? 'bg-gradient-to-r from-green-400 to-blue-500' :
+                          audioLevel > 20 ? 'bg-gradient-to-r from-yellow-400 to-green-500' :
+                          audioLevel > 5 ? 'bg-gradient-to-r from-orange-400 to-yellow-500' :
+                          'bg-gradient-to-r from-red-400 to-orange-500'
+                        }`}
+                        style={{ width: `${Math.min(audioLevel * 2, 100)}%` }}
+                      ></div>
+                    </div>
+                    <div className="text-sm text-gray-400 mb-4">
+                      Audio Level: {Math.round(audioLevel * 2)}%
+                      {audioLevel > 10 && <span className="text-green-400 ml-2">✓ Good signal</span>}
+                      {audioLevel > 0 && audioLevel <= 10 && <span className="text-yellow-400 ml-2">⚠ Speak louder</span>}
+                      {audioLevel === 0 && <span className="text-gray-500 ml-2">Silent</span>}
+                    </div>
+                  </div>
+                )}
+
+                <button 
+                  onClick={handleAudioCheckComplete}
+                  className="flex items-center space-x-2 mx-auto px-6 py-3 bg-green-500 hover:bg-green-600 rounded-full transition-all duration-300"
+                >
+                  <CheckCircle className="w-5 h-5" />
+                  <span>Join Call</span>
+                </button>
               </div>
             </div>
           </div>
