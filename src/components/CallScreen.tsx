@@ -39,10 +39,10 @@ export function CallScreen({ isOpen, onClose }) {
   });
 
   useEffect(() => {
-    if(isOpen){
-      
+    // if(isOpen){
+
     initializeCall();
-    }
+    // }
     
     return () => {
       cleanup();
