@@ -2,15 +2,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { PhoneOff, Volume2, Mic, MicOff, Video } from 'lucide-react';
 import { useConversation } from '@elevenlabs/react';
 
-interface CallScreenProps {
-  profile: Profile;
-  todos: TodoItem[];
-  settings: AppSettings;
-  onEndCall: (callData: CallData) => void;
-  onToggleTodo: (id: string) => void;
-  onAddTodo: (text: string) => void;
-  onRemoveTodo: (id: string) => void;
-}
 
 export function CallScreen({ 
 
@@ -117,7 +108,7 @@ export function CallScreen({
           {
             method: 'GET',
             headers: {
-              'Xi-Api-Key': settings.apiKey,
+              'Xi-Api-Key': "sk_f030d609bd8ffe5b7fb6d4d35950395433ff69acca64d526",
             },
           }
         );
