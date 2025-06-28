@@ -3,9 +3,9 @@ import { PhoneOff, Volume2, Mic, MicOff, Video } from 'lucide-react';
 import { useConversation } from '@elevenlabs/react';
 
 
-export function CallScreen({ 
 
-}: any) {
+
+export function CallScreen() {
   const [callDuration, setCallDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [currentMessage, setCurrentMessage] = useState('');
@@ -39,7 +39,7 @@ export function CallScreen({
   });
 
   useEffect(() => {
-    // initializeCall();
+    initializeCall();
     
     return () => {
       cleanup();
@@ -102,41 +102,41 @@ export function CallScreen({
       const conversationId = conversation.getId();
       let conversationDetails = null;
       
-      if (conversationId) {
-        const response = await fetch(
-          `https://api.elevenlabs.io/v1/convai/conversations/${conversationId}`,
-          {
-            method: 'GET',
-            headers: {
-              'Xi-Api-Key': "sk_f030d609bd8ffe5b7fb6d4d35950395433ff69acca64d526",
-            },
-          }
-        );
+      // if (conversationId) {
+      //   const response = await fetch(
+      //     `https://api.elevenlabs.io/v1/convai/conversations/${conversationId}`,
+      //     {
+      //       method: 'GET',
+      //       headers: {
+      //         'Xi-Api-Key': settings.apiKey,
+      //       },
+      //     }
+      //   );
         
-        if (response.ok) {
-          conversationDetails = await response.json();
-        }
-      }
+      //   if (response.ok) {
+      //     conversationDetails = await response.json();
+      //   }
+      // }
       
       // End the conversation
       await conversation.endSession();
       
-      const callData: CallData = {
-        duration,
-        startTime: startTimeRef.current,
-        endTime,
-        conversationId,
-        conversationDetails,
-        transcript: conversationDetails?.transcript || 'Conversation completed successfully',
-        evaluation: {
-          score: conversationDetails?.analysis?.call_successful === 'success' ? 90 : 75,
-          feedback: conversationDetails?.analysis?.transcript_summary || "Great conversation! You showed genuine interest and engagement.",
-          highlights: ["Good listening skills", "Asked thoughtful questions", "Maintained positive energy"]
-        }
-      };
+      // const callData: CallData = {
+      //   duration,
+      //   startTime: startTimeRef.current,
+      //   endTime,
+      //   conversationId,
+      //   conversationDetails,
+      //   transcript: conversationDetails?.transcript || 'Conversation completed successfully',
+      //   evaluation: {
+      //     score: conversationDetails?.analysis?.call_successful === 'success' ? 90 : 75,
+      //     feedback: conversationDetails?.analysis?.transcript_summary || "Great conversation! You showed genuine interest and engagement.",
+      //     highlights: ["Good listening skills", "Asked thoughtful questions", "Maintained positive energy"]
+      //   }
+      // };
       
       cleanup();
-      onEndCall(callData);
+      // onEndCall(callData);
     } catch (error) {
       console.error('Error ending call:', error);
       
@@ -154,7 +154,7 @@ export function CallScreen({
         }
       };
       cleanup();
-      onEndCall(callData);
+      // onEndCall(callData);
     }
   }, [conversation]);
 
@@ -297,7 +297,7 @@ console.log('first',conversation)
           </div>
         </div>
 
-       
+        
       </div>
     </div>
   );
