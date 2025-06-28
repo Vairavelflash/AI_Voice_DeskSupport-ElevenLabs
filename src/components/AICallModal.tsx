@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Mic, MicOff, Phone, PhoneOff, Volume2, CheckCircle, AlertCircle, Video } from 'lucide-react';
+import { useConversation } from '@elevenlabs/react';
 import type { CallState } from '../types';
 
 interface AICallModalProps {
@@ -7,12 +8,10 @@ interface AICallModalProps {
   onClose: () => void;
 }
 
-interface CallSummary {
-  duration: string;
-  userMessages: string[];
-  agentMessages: string[];
-  callQuality: 'Excellent' | 'Good' | 'Fair' | 'Poor';
-  keyTopics: string[];
+interface SessionSummary {
+  overview?: string;
+  transcript?: string;
+  evaluation?: Record<string, any>;
 }
 
 const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
@@ -24,27 +23,49 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
   });
 
   const [currentScreen, setCurrentScreen] = useState<'audioCheck' | 'calling' | 'callEnd'>('audioCheck');
-  const [isConnecting, setIsConnecting] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [isAudioTesting, setIsAudioTesting] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
-  const [conversationText, setConversationText] = useState<string>('');
-  const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
   const [callStartTime, setCallStartTime] = useState<Date | null>(null);
-  const [callSummary, setCallSummary] = useState<CallSummary | null>(null);
-  const [userMessages, setUserMessages] = useState<string[]>([]);
-  const [agentMessages, setAgentMessages] = useState<string[]>([]);
-  const [currentUserText, setCurrentUserText] = useState('');
-  const [currentAgentText, setCurrentAgentText] = useState('');
+  const [sessionSummary, setSessionSummary] = useState<SessionSummary | null>(null);
   const [micPermission, setMicPermission] = useState<'granted' | 'denied' | 'pending'>('pending');
+  const [conversationMessages, setConversationMessages] = useState<Array<{type: 'user' | 'agent', text: string}>>([]);
   
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const microphoneRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
-  const websocketRef = useRef<WebSocket | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+
+  // ElevenLabs conversation hook
+  const conversation = useConversation({
+    onConnect: () => {
+      console.log('🟢 Connected to ElevenLabs');
+      setCallState(prev => ({ ...prev, isJoined: true }));
+      setCallStartTime(new Date());
+      
+      // Add initial greeting
+      const greeting = "Hi! I'm Sam, your AI front desk assistant. I'm here to help you learn about our diagnostic services and book appointments. How can I assist you today?";
+      setConversationMessages([{ type: 'agent', text: greeting }]);
+    },
+    onDisconnect: () => {
+      console.log('🔴 Disconnected from ElevenLabs');
+      setCallState(prev => ({ ...prev, isJoined: false }));
+    },
+    onMessage: (message) => {
+      console.log('Message received:', message);
+      
+      if (message.type === 'agent_response' && message.message) {
+        setConversationMessages(prev => [...prev, { type: 'agent', text: message.message }]);
+      } else if (message.type === 'user_transcript' && message.message) {
+        setConversationMessages(prev => [...prev, { type: 'user', text: message.message }]);
+      }
+    },
+    onError: (error) => {
+      console.error('ElevenLabs Error:', error);
+      setAudioError('Connection error with AI assistant. Please try again.');
+    },
+  });
 
   useEffect(() => {
     if (isOpen) {
@@ -52,7 +73,6 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
       setCurrentScreen('audioCheck');
       checkMicrophonePermission();
     } else {
-      // Reset all state when modal closes
       resetAllState();
     }
   }, [isOpen]);
@@ -108,19 +128,13 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
       isAudioChecked: false
     });
     setCurrentScreen('audioCheck');
-    setIsConnecting(false);
     setAudioLevel(0);
     setIsAudioTesting(false);
     setAudioError(null);
-    setConversationText('');
-    setIsAgentSpeaking(false);
     setCallStartTime(null);
-    setCallSummary(null);
-    setUserMessages([]);
-    setAgentMessages([]);
-    setCurrentUserText('');
-    setCurrentAgentText('');
+    setSessionSummary(null);
     setMicPermission('pending');
+    setConversationMessages([]);
     cleanup();
   };
 
@@ -137,14 +151,6 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
       audioContextRef.current.close();
       audioContextRef.current = null;
     }
-    if (websocketRef.current) {
-      websocketRef.current.close();
-      websocketRef.current = null;
-    }
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current = null;
-    }
     if (analyserRef.current) {
       analyserRef.current = null;
     }
@@ -153,7 +159,7 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const handleAudioCheckComplete = async () => {
+  const handleAudioCheckComplete = useCallback(async () => {
     console.log('Audio check completed, proceeding to call...');
     setCallState(prev => ({ ...prev, isAudioChecked: true }));
     setIsAudioTesting(false);
@@ -165,165 +171,83 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
     
     // Proceed to calling screen
     setCurrentScreen('calling');
-    await connectToElevenLabs();
-  };
+    await startConversation();
+  }, []);
 
-  const connectToElevenLabs = async () => {
+  const startConversation = useCallback(async () => {
     try {
-      setIsConnecting(true);
-      setCallStartTime(new Date());
+      if (micPermission === 'granted') {
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
       
-      // Create WebSocket connection to ElevenLabs Conversational AI
-      const websocket = new WebSocket(
-        `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=agent_01jy614wfzeyysvckvwxz01pw4`,
-        [],
-        {
-          headers: {
-            'xi-api-key': 'sk_f030d609bd8ffe5b7fb6d4d35950395433ff69acca64d526'
-          }
-        }
-      );
-
-      websocketRef.current = websocket;
-
-      websocket.onopen = () => {
-        console.log('Connected to ElevenLabs');
-        
-        // Send authentication and initial setup
-        websocket.send(JSON.stringify({
-          type: 'conversation_initiation_metadata',
-          conversation_initiation_metadata: {
-            agent_id: 'agent_01jy614wfzeyysvckvwxz01pw4'
-          }
-        }));
-
-        setCallState(prev => ({ ...prev, isJoined: true }));
-        setIsConnecting(false);
-        
-        // Initial greeting
-        const greeting = 'Hi! I\'m Sam, your AI front desk assistant. I\'m here to help you learn about our diagnostic services and book appointments. How can I assist you today?';
-        setCurrentAgentText(greeting);
-        setAgentMessages([greeting]);
-        setIsAgentSpeaking(true);
-        
-        setTimeout(() => setIsAgentSpeaking(false), 4000);
-
-        // Start recording audio if stream is available
-        if (streamRef.current && micPermission === 'granted') {
-          startAudioRecording();
-        }
-      };
-
-      websocket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log('Received:', data);
-          
-          if (data.type === 'agent_response') {
-            const text = data.agent_response;
-            setCurrentAgentText(text);
-            setAgentMessages(prev => [...prev, text]);
-            setIsAgentSpeaking(true);
-            setTimeout(() => setIsAgentSpeaking(false), 2000);
-          } else if (data.type === 'user_transcript') {
-            const text = data.user_transcript;
-            setCurrentUserText(text);
-            setUserMessages(prev => [...prev, text]);
-          } else if (data.type === 'audio') {
-            // Handle audio playback
-            if (data.audio_event && data.audio_event.audio_base_64) {
-              playAudioFromBase64(data.audio_event.audio_base_64);
-            }
-          }
-        } catch (error) {
-          console.error('Error parsing WebSocket message:', error);
-        }
-      };
-
-      websocket.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        setCurrentAgentText('Connection error. Please try again.');
-        setIsConnecting(false);
-      };
-
-      websocket.onclose = (event) => {
-        console.log('WebSocket connection closed:', event.code, event.reason);
-        if (callState.isJoined) {
-          setCurrentAgentText('Connection lost. Please try again.');
-        }
-      };
-
-    } catch (error) {
-      console.error('Failed to connect to ElevenLabs:', error);
-      setCurrentAgentText('Failed to connect to AI assistant. Please try again.');
-      setIsConnecting(false);
-    }
-  };
-
-  const startAudioRecording = () => {
-    if (!streamRef.current) return;
-
-    try {
-      const mediaRecorder = new MediaRecorder(streamRef.current, {
-        mimeType: 'audio/webm;codecs=opus'
+      await conversation.startSession({
+        agentId: 'agent_01jy614wfzeyysvckvwxz01pw4',
       });
       
-      mediaRecorderRef.current = mediaRecorder;
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0 && websocketRef.current?.readyState === WebSocket.OPEN && !callState.isMuted) {
-          // Convert audio data to base64 and send
-          const reader = new FileReader();
-          reader.onload = () => {
-            const arrayBuffer = reader.result as ArrayBuffer;
-            const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-            
-            websocketRef.current?.send(JSON.stringify({
-              type: 'audio_event',
-              audio_event: {
-                audio_base_64: base64Audio,
-                sample_rate: 44100
-              }
-            }));
-          };
-          reader.readAsArrayBuffer(event.data);
-        }
-      };
-
-      mediaRecorder.start(250); // Send audio chunks every 250ms
+      setSessionSummary(null); // clear previous session
     } catch (error) {
-      console.error('Failed to start audio recording:', error);
+      console.error('Failed to start conversation:', error);
+      setAudioError('Failed to connect to AI assistant. Please try again.');
     }
-  };
+  }, [conversation, micPermission]);
 
-  const playAudioFromBase64 = (base64Audio: string) => {
+  const handleEndCall = useCallback(async () => {
     try {
-      const audio = new Audio(`data:audio/mp3;base64,${base64Audio}`);
-      audio.play().catch(console.error);
-    } catch (error) {
-      console.error('Error playing audio:', error);
-    }
-  };
+      await conversation.endSession();
 
-  const handleEndCall = () => {
+      // Wait for session summary to become available
+      let retries = 0;
+      const maxRetries = 20;
+      const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
+      while (!conversation.session && retries < maxRetries) {
+        await delay(500); // wait 500ms
+        retries++;
+      }
+
+      const session = conversation.session;
+      if (session) {
+        const { overview, transcript, evaluation } = session;
+        setSessionSummary({ overview, transcript, evaluation });
+      } else {
+        console.warn('Session data not available after waiting.');
+        // Create fallback summary from conversation messages
+        const fallbackSummary = createFallbackSummary();
+        setSessionSummary(fallbackSummary);
+      }
+    } catch (error) {
+      console.error('Error ending call:', error);
+      // Create fallback summary
+      const fallbackSummary = createFallbackSummary();
+      setSessionSummary(fallbackSummary);
+    }
+
+    cleanup();
+    setCurrentScreen('callEnd');
+  }, [conversation, conversationMessages, callStartTime]);
+
+  const createFallbackSummary = (): SessionSummary => {
     const endTime = new Date();
     const duration = callStartTime ? 
       Math.round((endTime.getTime() - callStartTime.getTime()) / 1000) : 0;
     
-    const durationString = `${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, '0')}`;
+    const userMessages = conversationMessages.filter(msg => msg.type === 'user');
+    const agentMessages = conversationMessages.filter(msg => msg.type === 'agent');
     
-    // Generate call summary
-    const summary: CallSummary = {
-      duration: durationString,
-      userMessages,
-      agentMessages,
-      callQuality: userMessages.length > 3 ? 'Excellent' : userMessages.length > 1 ? 'Good' : 'Fair',
-      keyTopics: extractKeyTopics([...userMessages, ...agentMessages])
+    const transcript = conversationMessages
+      .map(msg => `${msg.type === 'user' ? 'User' : 'Agent'}: ${msg.text}`)
+      .join('\n\n');
+
+    const overview = `Call completed successfully. Duration: ${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, '0')}. ${userMessages.length} user messages and ${agentMessages.length} agent responses exchanged.`;
+    
+    const evaluation = {
+      call_quality: userMessages.length > 3 ? 'Excellent' : userMessages.length > 1 ? 'Good' : 'Fair',
+      engagement_level: userMessages.length > 2 ? 'High' : 'Medium',
+      topics_covered: extractKeyTopics(conversationMessages.map(msg => msg.text)),
+      duration_seconds: duration
     };
-    
-    setCallSummary(summary);
-    cleanup();
-    setCurrentScreen('callEnd');
+
+    return { overview, transcript, evaluation };
   };
 
   const extractKeyTopics = (messages: string[]): string[] => {
@@ -353,6 +277,13 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
   const handleBackToHome = () => {
     resetAllState();
     onClose();
+  };
+
+  const getCallDuration = () => {
+    if (!callStartTime) return '0:00';
+    const now = new Date();
+    const duration = Math.round((now.getTime() - callStartTime.getTime()) / 1000);
+    return `${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, '0')}`;
   };
 
   if (!isOpen) return null;
@@ -472,7 +403,7 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
                   </div>
                   
                   {/* Speaking Animation */}
-                  {isAgentSpeaking && (
+                  {conversation.isSpeaking && (
                     <>
                       <div className="absolute inset-0 rounded-full border-4 border-white/30 animate-ping"></div>
                       <div className="absolute inset-2 rounded-full border-2 border-white/20 animate-ping delay-75"></div>
@@ -482,29 +413,50 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
               </div>
               
               <h2 className="text-2xl font-bold mb-2">Sam - AI Assistant</h2>
-              <p className="text-green-400 font-medium mb-4 flex items-center space-x-2">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                <span>Connected</span>
-              </p>
+              <div className="flex items-center space-x-4 mb-4">
+                <p className={`font-medium flex items-center space-x-2 ${
+                  conversation.status === 'connected' ? 'text-green-400' : 'text-yellow-400'
+                }`}>
+                  <div className={`w-2 h-2 rounded-full animate-pulse ${
+                    conversation.status === 'connected' ? 'bg-green-400' : 'bg-yellow-400'
+                  }`}></div>
+                  <span>{conversation.status === 'connected' ? 'Connected' : 'Connecting...'}</span>
+                </p>
+                {callStartTime && (
+                  <p className="text-gray-400 text-sm">
+                    Duration: {getCallDuration()}
+                  </p>
+                )}
+              </div>
               
               {/* Conversation Display */}
-              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 max-w-2xl w-full mb-8 min-h-[200px]">
+              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 max-w-2xl w-full mb-8 min-h-[200px] max-h-[300px] overflow-y-auto">
                 <div className="space-y-4">
-                  {currentAgentText && (
-                    <div className="text-left">
-                      <div className="text-blue-400 font-semibold mb-1">Sam (AI Assistant):</div>
-                      <p className="text-gray-300 leading-relaxed">{currentAgentText}</p>
+                  {conversationMessages.length === 0 && conversation.status !== 'connected' && (
+                    <div className="text-center text-gray-400">
+                      <div className="flex justify-center mb-2">
+                        <div className="flex space-x-1">
+                          <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
+                          <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce delay-75"></div>
+                          <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce delay-150"></div>
+                        </div>
+                      </div>
+                      <p>Connecting to AI assistant...</p>
                     </div>
                   )}
                   
-                  {currentUserText && (
-                    <div className="text-left">
-                      <div className="text-green-400 font-semibold mb-1">You:</div>
-                      <p className="text-gray-300 leading-relaxed">{currentUserText}</p>
+                  {conversationMessages.map((message, index) => (
+                    <div key={index} className="text-left">
+                      <div className={`font-semibold mb-1 ${
+                        message.type === 'agent' ? 'text-blue-400' : 'text-green-400'
+                      }`}>
+                        {message.type === 'agent' ? 'Sam (AI Assistant):' : 'You:'}
+                      </div>
+                      <p className="text-gray-300 leading-relaxed">{message.text}</p>
                     </div>
-                  )}
+                  ))}
                   
-                  {isAgentSpeaking && (
+                  {conversation.isSpeaking && (
                     <div className="flex justify-center mt-4">
                       <div className="flex space-x-1">
                         <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
@@ -548,7 +500,7 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
           </div>
         )}
 
-        {currentScreen === 'callEnd' && callSummary && (
+        {currentScreen === 'callEnd' && sessionSummary && (
           // Call End Screen
           <div className="flex flex-col items-center justify-center h-full px-6">
             <div className="max-w-2xl w-full text-center">
@@ -560,58 +512,42 @@ const AICallModal: React.FC<AICallModalProps> = ({ isOpen, onClose }) => {
               <p className="text-gray-300 mb-8">Thank you for using our AI assistant service!</p>
 
               {/* Call Summary */}
-              <div className="bg-white/5 backdrop-blur-lg rounded-2xl p-8 mb-8 text-left">
-                <h3 className="text-xl font-bold mb-6 text-center">Call Summary</h3>
+              <div className="bg-white/5 backdrop-blur-lg rounded-2xl p-8 mb-8 text-left max-h-[60vh] overflow-y-auto">
+                <h3 className="text-xl font-bold mb-6 text-center">📞 Call Summary</h3>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  <div>
-                    <h4 className="font-semibold text-blue-400 mb-2">Call Duration</h4>
-                    <p className="text-gray-300">{callSummary.duration}</p>
+                {sessionSummary.overview && (
+                  <div className="mb-6">
+                    <h4 className="font-semibold text-blue-400 mb-2">Overview</h4>
+                    <p className="text-gray-300 leading-relaxed">{sessionSummary.overview}</p>
                   </div>
-                  
-                  <div>
-                    <h4 className="font-semibold text-blue-400 mb-2">Call Quality</h4>
-                    <p className={`font-medium ${
-                      callSummary.callQuality === 'Excellent' ? 'text-green-400' :
-                      callSummary.callQuality === 'Good' ? 'text-blue-400' :
-                      callSummary.callQuality === 'Fair' ? 'text-yellow-400' : 'text-red-400'
-                    }`}>
-                      {callSummary.callQuality}
-                    </p>
+                )}
+
+                {sessionSummary.evaluation && (
+                  <div className="mb-6">
+                    <h4 className="font-semibold text-blue-400 mb-2">Evaluation Result</h4>
+                    <div className="space-y-2">
+                      {Object.entries(sessionSummary.evaluation).map(([key, value]) => (
+                        <div key={key} className="flex justify-between items-center">
+                          <span className="text-gray-400 capitalize">{key.replace(/_/g, ' ')}:</span>
+                          <span className="text-gray-300 font-medium">
+                            {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
-                <div className="mb-6">
-                  <h4 className="font-semibold text-blue-400 mb-2">Topics Discussed</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {callSummary.keyTopics.map((topic, index) => (
-                      <span 
-                        key={index}
-                        className="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm"
-                      >
-                        {topic}
-                      </span>
-                    ))}
+                {sessionSummary.transcript && (
+                  <div className="mb-6">
+                    <h4 className="font-semibold text-blue-400 mb-2">Transcript</h4>
+                    <div className="bg-white/5 p-4 rounded-xl max-h-40 overflow-y-auto">
+                      <pre className="text-gray-300 text-sm whitespace-pre-wrap leading-relaxed">
+                        {sessionSummary.transcript}
+                      </pre>
+                    </div>
                   </div>
-                </div>
-
-                <div className="mb-6">
-                  <h4 className="font-semibold text-blue-400 mb-2">Conversation Overview</h4>
-                  <p className="text-gray-300 text-sm">
-                    You exchanged {callSummary.userMessages.length} messages with our AI assistant. 
-                    The conversation covered {callSummary.keyTopics.length} main topic{callSummary.keyTopics.length !== 1 ? 's' : ''}.
-                  </p>
-                </div>
-
-                <div>
-                  <h4 className="font-semibold text-blue-400 mb-2">Evaluation Result</h4>
-                  <p className="text-gray-300 text-sm">
-                    {callSummary.callQuality === 'Excellent' && 'Outstanding interaction! You had a comprehensive conversation with clear communication.'}
-                    {callSummary.callQuality === 'Good' && 'Great conversation! You successfully communicated your needs and received helpful information.'}
-                    {callSummary.callQuality === 'Fair' && 'Good start! Consider speaking more clearly or checking your audio setup for better interaction.'}
-                    {callSummary.callQuality === 'Poor' && 'We detected some communication issues. Please check your audio setup and try again.'}
-                  </p>
-                </div>
+                )}
               </div>
 
               <button 
