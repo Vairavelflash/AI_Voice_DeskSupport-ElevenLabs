@@ -41,7 +41,7 @@ export function CallScreen({ isOpen, onClose }) {
   useEffect(() => {
     if(isOpen){
       
-    // initializeCall();
+    initializeCall();
     }
     
     return () => {
@@ -142,7 +142,7 @@ export function CallScreen({ isOpen, onClose }) {
       
       // onEndCall(callData);
     } catch (error) {
-      console.error('Error ending call:', error);
+      console.error('Error ending call', error);
       
       // Still end the call even if there's an error
       const callData: CallData = {
