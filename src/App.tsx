@@ -4,6 +4,7 @@ import AboutSection from './components/AboutSection';
 import ServicesSection from './components/ServicesSection';
 import AICallModal from './components/AICallModal';
 import Footer from './components/Footer';
+import CallScreen from "./components/CallScreen";
 import type { Company } from './types';
 
 const company: Company = {
@@ -33,10 +34,11 @@ function App() {
       <ServicesSection />
       <Footer />
       
-      <AICallModal 
+      {/* <AICallModal 
         isOpen={isAICallOpen} 
         onClose={handleCloseAICall} 
-      />
+      /> */}
+      <CallScreen/>
     </div>
   );
 }
