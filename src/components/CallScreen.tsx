@@ -39,7 +39,7 @@ export function CallScreen({ isOpen, onClose }) {
   });
 
   useEffect(() => {
-    initializeCall();
+    // initializeCall();
     
     return () => {
       cleanup();
@@ -55,8 +55,8 @@ export function CallScreen({ isOpen, onClose }) {
       
       // Start ElevenLabs conversation
       await conversation.startSession({
-        // agentId: agentId,
-        agentId:"agent_01jy614wfzeyysvckvwxz01pw4"
+        agentId: agentId,
+        // agentId:"agent_01jy614wfzeyysvckvwxz01pw4"
       });
       
       // Start call timer
@@ -66,7 +66,7 @@ export function CallScreen({ isOpen, onClose }) {
       }, 1000);
       
     } catch (error) {
-      console.error('Failed to initialize call:', error);
+      console.error('Failed to initialize call f:', error);
       setCurrentMessage('Failed to start conversation');
     }
   };
