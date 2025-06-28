@@ -33,12 +33,12 @@ function App() {
       <AboutSection company={company} />
       <ServicesSection />
       <Footer />
-      
-      {/* <AICallModal 
+
+      <AICallModal 
         isOpen={isAICallOpen} 
         onClose={handleCloseAICall} 
-      /> */}
-      <CallScreen/>
+      />
+      {/* <CallScreen/> */}
     </div>
   );
 }
