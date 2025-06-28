@@ -265,7 +265,7 @@ console.log('first',conversation)
               </div>
             </div>
           )}
-                <p className="text-white text-lg leading-relaxed">001{currentMessage}</p>
+              
 
           {/* Controls */}
           <div className="text-center pb-8">
